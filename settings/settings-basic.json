@@ -1,0 +1,9 @@
+﻿{
+  "SettingsVersion": 1.2,
+  "SimMode": "Car",
+  "BGM": true,
+  "EngineSound": false,
+  "Algo": {
+    "Map": "10"
+  }
+}

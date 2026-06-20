@@ -13,3 +13,16 @@ Desktop.ini
 # Environment
 .env
 .env.*
+
+# Java build outputs
+*.class
+Build/
+out/
+
+# SSAFY simulator/runtime binaries
+*.dll
+*.exe
+*.zip
+Simulator/
+Algo/
+Engine/
