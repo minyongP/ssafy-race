@@ -5,6 +5,9 @@ public class MyCarLogicTest {
         turnsTowardForwardCurve();
         recentersWhenCarIsOffMiddle();
         slowsBeforeSharpFastCurve();
+        avoidsObstacleOnRightBySteeringLeft();
+        avoidsObstacleOnLeftBySteeringRight();
+        recoversWhenStoppedAfterStart();
         clampsSteeringRange();
         System.out.println("MyCarLogicTest passed");
     }
@@ -33,6 +36,37 @@ public class MyCarLogicTest {
         assertTrue(command.brake >= 0.6f, "sharp fast curve should apply brake");
     }
 
+    static void avoidsObstacleOnRightBySteeringLeft() {
+        MyCar car = new MyCar();
+        DrivingInterface.CarStateValues values = state(80, 0, 0, 0, 0, 0, 0);
+        addObstacle(values, 18.0f, 1.0f);
+
+        MyCar.DriveCommand command = car.decideControls(values);
+
+        assertTrue(command.steering < -0.10f, "right-side obstacle should steer left");
+    }
+
+    static void avoidsObstacleOnLeftBySteeringRight() {
+        MyCar car = new MyCar();
+        DrivingInterface.CarStateValues values = state(80, 0, 0, 0, 0, 0, 0);
+        addObstacle(values, 18.0f, -1.0f);
+
+        MyCar.DriveCommand command = car.decideControls(values);
+
+        assertTrue(command.steering > 0.10f, "left-side obstacle should steer right");
+    }
+
+    static void recoversWhenStoppedAfterStart() {
+        MyCar car = new MyCar();
+        MyCar.DriveCommand command = null;
+        for (int i = 0; i < 8; i++) {
+            command = car.decideControls(state(0.2f, 0, 0, 0, 0, 0, 0, 0));
+        }
+
+        assertTrue(command.throttle < 0.0f, "stopped car should reverse for recovery");
+        assertClose(0.0f, command.brake, 0.0001f, "recovery should release brake");
+    }
+
     static void clampsSteeringRange() {
         MyCar car = new MyCar();
         MyCar.DriveCommand command = car.decideControls(state(30, -80, -80, 120, 120, 120, 120));
@@ -47,6 +81,7 @@ public class MyCarLogicTest {
         values.to_middle = toMiddle;
         values.moving_angle = movingAngle;
         values.moving_forward = 1.0f;
+        values.lap_progress = 1.0f;
         values.half_road_limit = 10.0f;
         for (float angle : angles) {
             values.track_forward_angles.add(angle);
@@ -55,9 +90,22 @@ public class MyCarLogicTest {
         return values;
     }
 
+    static void addObstacle(DrivingInterface.CarStateValues values, float dist, float toMiddle) {
+        DrivingInterface.ObstaclesInfo obstacle = new DrivingInterface.ObstaclesInfo();
+        obstacle.dist = dist;
+        obstacle.to_middle = toMiddle;
+        values.track_forward_obstacles.add(obstacle);
+    }
+
     static void assertTrue(boolean value, String message) {
         if (!value) {
             throw new AssertionError(message);
+        }
+    }
+
+    static void assertClose(float expected, float actual, float tolerance, String message) {
+        if (Math.abs(expected - actual) > tolerance) {
+            throw new AssertionError(message + " expected=" + expected + " actual=" + actual);
         }
     }
 }

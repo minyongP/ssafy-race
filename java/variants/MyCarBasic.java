@@ -2,10 +2,6 @@ import DrivingInterface.*;
 
 public class MyCar {
 
-    boolean is_accident = false;
-    int accident_count = 0;
-    int recovery_count = 0;
-
     boolean is_debug = false;
     static boolean enable_api_control = true; // true(Controlled by code) /false(Controlled by keyboard)
 
@@ -94,11 +90,6 @@ public class MyCar {
     }
 
     DriveCommand decideControls(DrivingInterface.CarStateValues sensing_info) {
-        DriveCommand recovery_command = getRecoveryCommand(sensing_info);
-        if (recovery_command != null) {
-            return recovery_command;
-        }
-
         float ref_angle = getReferenceAngle(sensing_info);
         float middle_add = (sensing_info.to_middle / 70.0f) * -1.0f;
         float steer_factor = getSteerFactor(sensing_info.speed);
@@ -146,89 +137,7 @@ public class MyCar {
             steering += steering >= 0.0f ? 0.20f : -0.20f;
         }
 
-        DriveCommand obstacle_command = avoidObstacle(sensing_info, steering, throttle, brake);
-        steering = obstacle_command.steering;
-        throttle = obstacle_command.throttle;
-        brake = obstacle_command.brake;
-
         return new DriveCommand(clamp(steering, -1.0f, 1.0f), clamp(throttle, -1.0f, 1.0f), clamp(brake, 0.0f, 1.0f));
-    }
-
-    private DriveCommand getRecoveryCommand(DrivingInterface.CarStateValues sensing_info) {
-        if (sensing_info.speed > 30.0f) {
-            is_accident = false;
-            recovery_count = 0;
-            accident_count = 0;
-            return null;
-        }
-
-        if (sensing_info.lap_progress > 0.5f && !is_accident && Math.abs(sensing_info.speed) < 1.0f) {
-            accident_count++;
-        }
-
-        if (accident_count > 6) {
-            is_accident = true;
-        }
-
-        if (!is_accident) {
-            return null;
-        }
-
-        recovery_count++;
-        if (recovery_count > 20) {
-            is_accident = false;
-            recovery_count = 0;
-            accident_count = 0;
-            return null;
-        }
-
-        return new DriveCommand(0.02f, -1.0f, 0.0f);
-    }
-
-    private DriveCommand avoidObstacle(
-            DrivingInterface.CarStateValues sensing_info,
-            float steering,
-            float throttle,
-            float brake
-    ) {
-        DrivingInterface.ObstaclesInfo obstacle = getClosestObstacle(sensing_info);
-        if (obstacle == null || obstacle.dist > 35.0f) {
-            return new DriveCommand(steering, throttle, brake);
-        }
-
-        float gap = obstacle.to_middle - sensing_info.to_middle;
-        float safe_width = 2.7f;
-        if (Math.abs(gap) > safe_width) {
-            return new DriveCommand(steering, throttle, brake);
-        }
-
-        float obstacle_direction = gap >= 0.0f ? 1.0f : -1.0f;
-        float avoid_direction = -obstacle_direction;
-        float distance_factor = clamp((35.0f - obstacle.dist) / 35.0f, 0.0f, 1.0f);
-        float overlap_factor = clamp((safe_width - Math.abs(gap)) / safe_width, 0.0f, 1.0f);
-        float avoid_strength = 0.18f + (0.65f * Math.max(distance_factor, overlap_factor));
-
-        steering += avoid_direction * avoid_strength;
-
-        if (obstacle.dist < 18.0f && sensing_info.speed > 85.0f) {
-            throttle = Math.min(throttle, 0.65f);
-            brake = Math.max(brake, 0.20f);
-        }
-
-        return new DriveCommand(steering, throttle, brake);
-    }
-
-    private DrivingInterface.ObstaclesInfo getClosestObstacle(DrivingInterface.CarStateValues sensing_info) {
-        DrivingInterface.ObstaclesInfo closest = null;
-        for (DrivingInterface.ObstaclesInfo obstacle : sensing_info.track_forward_obstacles) {
-            if (obstacle.dist <= 0.0f) {
-                continue;
-            }
-            if (closest == null || obstacle.dist < closest.dist) {
-                closest = obstacle;
-            }
-        }
-        return closest;
     }
 
     private float getReferenceAngle(DrivingInterface.CarStateValues sensing_info) {

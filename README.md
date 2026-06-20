@@ -7,9 +7,21 @@ SSAFY Race Java bot workspace.
 - `java/MyCar.java`: main driving bot logic.
 - `java/MyCarLogicTest.java`: small logic checks for steering and speed control.
 - `java/DrivingInterface/DrivingInterface.java`: Java interface model used by the bot.
+- `java/variants/`: map-specific `MyCar.java` versions kept for copy-based switching.
 - `settings/settings-basic.json`: AirSim settings for the basic map (`Map: "10"`).
+- `settings/settings-speed.json`: AirSim settings for the speed map (`Map: "31"`).
 
 Simulator binaries, DLLs, build outputs, and downloaded ZIP files are intentionally excluded from Git.
+
+## Variant Switching
+
+Each file under `java/variants/` keeps the internal class name as `MyCar`.
+To run a variant, copy it over both active files:
+
+```powershell
+Copy-Item java\variants\MyCarSpeed.java java\MyCar.java -Force
+Copy-Item java\variants\MyCarSpeed.java C:\SSAFY_RACE\MyCar_Java\Bot_Java\MyCar.java -Force
+```
 
 ## Local Paths
 
