@@ -9,6 +9,7 @@ public class MyCarLogicTest {
         avoidsObstacleOnRightBySteeringLeft();
         avoidsObstacleOnLeftBySteeringRight();
         avoidsRightObstacleFromRightSideBySteeringLeft();
+        avoidsLeftObstacleFromLeftSideBySteeringRight();
         recoversWhenStoppedAfterStart();
         clampsSteeringRange();
         System.out.println("MyCarLogicTest passed");
@@ -73,6 +74,16 @@ public class MyCarLogicTest {
         MyCar.DriveCommand command = car.decideControls(values);
 
         assertTrue(command.steering < -0.10f, "right-side obstacle while right of center should steer left");
+    }
+
+    static void avoidsLeftObstacleFromLeftSideBySteeringRight() {
+        MyCar car = new MyCar();
+        DrivingInterface.CarStateValues values = state(80, -1.0f, 0, 0, 0, 0, 0);
+        addObstacle(values, 18.0f, -1.5f);
+
+        MyCar.DriveCommand command = car.decideControls(values);
+
+        assertTrue(command.steering > 0.10f, "left-side obstacle while left of center should steer right");
     }
 
     static void recoversWhenStoppedAfterStart() {

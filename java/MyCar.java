@@ -2,6 +2,18 @@ import DrivingInterface.*;
 
 public class MyCar {
 
+    private static final float CENTERING_FACTOR = 80.0f;
+    private static final float SPEED_LOOKAHEAD_UNIT = 30.0f;
+    private static final float ANGLE_LOOKAHEAD_UNIT = 45.0f;
+    private static final float SHARP_CURVE_ANGLE = 45.0f;
+    private static final float EMERGENCY_CURVE_ANGLE = 80.0f;
+    private static final float EMERGENCY_STEERING_BOOST = 0.30f;
+    private static final float OBSTACLE_SCAN_DISTANCE = 30.0f;
+    private static final float OBSTACLE_SAFE_WIDTH = 2.2f;
+    private static final float OBSTACLE_STEER_COEFF = 50.0f;
+    private static final float ROAD_HALF_WIDTH = 5.0f;
+    private static final float EPSILON = 0.001f;
+
     boolean is_accident = false;
     int accident_count = 0;
     int recovery_count = 0;
@@ -93,6 +105,16 @@ public class MyCar {
         }
     }
 
+    static class TrackRisk {
+        final boolean fullThrottle;
+        final boolean emergencyCurve;
+
+        TrackRisk(boolean fullThrottle, boolean emergencyCurve) {
+            this.fullThrottle = fullThrottle;
+            this.emergencyCurve = emergencyCurve;
+        }
+    }
+
     DriveCommand decideControls(DrivingInterface.CarStateValues sensing_info) {
         DriveCommand recovery_command = getRecoveryCommand(sensing_info);
         if (recovery_command != null) {
@@ -100,56 +122,21 @@ public class MyCar {
         }
 
         float ref_angle = getReferenceAngle(sensing_info);
-        float middle_add = (sensing_info.to_middle / 80.0f) * -1.0f;
-        float steer_factor = getSteerFactor(sensing_info.speed);
+        TrackRisk track_risk = inspectForwardTrack(sensing_info);
+        float steering = calculateBaseSteering(sensing_info, ref_angle);
+        DriveCommand speed_command = calculateSpeedCommand(sensing_info.speed, ref_angle, track_risk);
 
-        float steering = ((ref_angle - sensing_info.moving_angle) / (steer_factor + 0.001f)) + middle_add;
+        if (track_risk.emergencyCurve) {
+            steering = addEmergencySteering(steering);
+        }
 
-        boolean full_throttle = true;
-        boolean emergency_brake = false;
-        int road_range = Math.min(
-                sensing_info.track_forward_angles.size(),
-                Math.max(0, (int)(sensing_info.speed / 30.0f))
+        DriveCommand command = avoidObstacle(
+                sensing_info,
+                steering,
+                speed_command.throttle,
+                speed_command.brake
         );
-
-        for (int i = 0; i < road_range; i++) {
-            float forward_angle = Math.abs(sensing_info.track_forward_angles.get(i));
-            if (forward_angle > 45.0f) {
-                full_throttle = false;
-            }
-            if (forward_angle > 80.0f) {
-                emergency_brake = true;
-                break;
-            }
-        }
-
-        float throttle = getBaseThrottle(sensing_info.speed, ref_angle);
-        float brake = 0.0f;
-
-        if (!full_throttle) {
-            if (sensing_info.speed > 100.0f) {
-                brake = 0.30f;
-            }
-            if (sensing_info.speed > 120.0f) {
-                throttle = 0.70f;
-                brake = 0.70f;
-            }
-            if (sensing_info.speed > 130.0f) {
-                throttle = 0.50f;
-                brake = 1.0f;
-            }
-        }
-
-        if (emergency_brake) {
-            steering += steering > 0.0f ? 0.30f : -0.30f;
-        }
-
-        DriveCommand obstacle_command = avoidObstacle(sensing_info, steering, throttle, brake);
-        steering = obstacle_command.steering;
-        throttle = obstacle_command.throttle;
-        brake = obstacle_command.brake;
-
-        return new DriveCommand(clamp(steering, -1.0f, 1.0f), clamp(throttle, -1.0f, 1.0f), clamp(brake, 0.0f, 1.0f));
+        return clampCommand(command);
     }
 
     private DriveCommand getRecoveryCommand(DrivingInterface.CarStateValues sensing_info) {
@@ -183,6 +170,59 @@ public class MyCar {
         return new DriveCommand(0.02f, -1.0f, 0.0f);
     }
 
+    private TrackRisk inspectForwardTrack(DrivingInterface.CarStateValues sensing_info) {
+        boolean full_throttle = true;
+        boolean emergency_curve = false;
+        int road_range = Math.min(
+                sensing_info.track_forward_angles.size(),
+                Math.max(0, (int)(sensing_info.speed / SPEED_LOOKAHEAD_UNIT))
+        );
+
+        for (int i = 0; i < road_range; i++) {
+            float forward_angle = Math.abs(sensing_info.track_forward_angles.get(i));
+            if (forward_angle > SHARP_CURVE_ANGLE) {
+                full_throttle = false;
+            }
+            if (forward_angle > EMERGENCY_CURVE_ANGLE) {
+                emergency_curve = true;
+                break;
+            }
+        }
+
+        return new TrackRisk(full_throttle, emergency_curve);
+    }
+
+    private float calculateBaseSteering(DrivingInterface.CarStateValues sensing_info, float ref_angle) {
+        float center_correction = (sensing_info.to_middle / CENTERING_FACTOR) * -1.0f;
+        float steer_factor = getSteerFactor(sensing_info.speed) + EPSILON;
+        return ((ref_angle - sensing_info.moving_angle) / steer_factor) + center_correction;
+    }
+
+    private DriveCommand calculateSpeedCommand(float speed, float ref_angle, TrackRisk track_risk) {
+        float throttle = getBaseThrottle(speed, ref_angle);
+        float brake = 0.0f;
+
+        if (!track_risk.fullThrottle) {
+            if (speed > 100.0f) {
+                brake = 0.30f;
+            }
+            if (speed > 120.0f) {
+                throttle = 0.70f;
+                brake = 0.70f;
+            }
+            if (speed > 130.0f) {
+                throttle = 0.50f;
+                brake = 1.0f;
+            }
+        }
+
+        return new DriveCommand(0.0f, throttle, brake);
+    }
+
+    private float addEmergencySteering(float steering) {
+        return steering + (steering > 0.0f ? EMERGENCY_STEERING_BOOST : -EMERGENCY_STEERING_BOOST);
+    }
+
     private DriveCommand avoidObstacle(
             DrivingInterface.CarStateValues sensing_info,
             float steering,
@@ -190,46 +230,38 @@ public class MyCar {
             float brake
     ) {
         DrivingInterface.ObstaclesInfo obstacle = getFirstObstacle(sensing_info);
-        if (obstacle == null || obstacle.dist >= 30.0f) {
+        if (obstacle == null || obstacle.dist >= OBSTACLE_SCAN_DISTANCE) {
             return new DriveCommand(steering, throttle, brake);
         }
 
         float obstacle_to_middle = obstacle.to_middle;
         float car_to_middle = sensing_info.to_middle;
         float diff_to_middle = obstacle_to_middle - car_to_middle;
-        float safe_width = 2.2f;
-        if (Math.abs(diff_to_middle) >= safe_width) {
+        if (Math.abs(diff_to_middle) >= OBSTACLE_SAFE_WIDTH) {
             return new DriveCommand(steering, throttle, brake);
         }
 
-        float need_steering = (safe_width - Math.abs(diff_to_middle)) / safe_width;
-        float steer_factor = getSteerFactor(sensing_info.speed) + 0.001f;
-        float steer_coeff = 50.0f;
-        float avoid_steering = need_steering * steer_coeff / steer_factor;
-
-        if (car_to_middle > 0.0f) {
-            if (5.0f - Math.max(car_to_middle, obstacle_to_middle) > safe_width) {
-                steering = avoid_steering;
-            } else {
-                steering = -avoid_steering;
-            }
-        }
-        if (car_to_middle < 0.0f) {
-            if (5.0f + Math.min(car_to_middle, obstacle_to_middle) > safe_width) {
-                steering = -avoid_steering;
-            } else {
-                steering = avoid_steering;
-            }
-        } else {
-            if (obstacle_to_middle < 0.0f) {
-                steering = avoid_steering;
-            }
-            if (obstacle_to_middle > 0.0f) {
-                steering = -avoid_steering;
-            }
-        }
+        float avoid_strength = calculateAvoidStrength(sensing_info.speed, diff_to_middle);
+        float avoid_direction = calculateAvoidDirection(car_to_middle, obstacle_to_middle);
+        steering = avoid_direction * avoid_strength;
 
         return new DriveCommand(steering, throttle, brake);
+    }
+
+    private float calculateAvoidStrength(float speed, float diff_to_middle) {
+        float need_steering = (OBSTACLE_SAFE_WIDTH - Math.abs(diff_to_middle)) / OBSTACLE_SAFE_WIDTH;
+        return need_steering * OBSTACLE_STEER_COEFF / (getSteerFactor(speed) + EPSILON);
+    }
+
+    private float calculateAvoidDirection(float car_to_middle, float obstacle_to_middle) {
+        boolean obstacle_is_right = obstacle_to_middle >= car_to_middle;
+        boolean can_move_left = ROAD_HALF_WIDTH + Math.min(car_to_middle, obstacle_to_middle) > OBSTACLE_SAFE_WIDTH;
+        boolean can_move_right = ROAD_HALF_WIDTH - Math.max(car_to_middle, obstacle_to_middle) > OBSTACLE_SAFE_WIDTH;
+
+        if (obstacle_is_right) {
+            return can_move_left ? -1.0f : 1.0f;
+        }
+        return can_move_right ? 1.0f : -1.0f;
     }
 
     private DrivingInterface.ObstaclesInfo getFirstObstacle(DrivingInterface.CarStateValues sensing_info) {
@@ -246,7 +278,7 @@ public class MyCar {
 
         int angle_index = Math.min(
                 sensing_info.track_forward_angles.size() - 1,
-                Math.max(0, (int)(sensing_info.speed / 45.0f))
+                Math.max(0, (int)(sensing_info.speed / ANGLE_LOOKAHEAD_UNIT))
         );
         return sensing_info.track_forward_angles.get(angle_index);
     }
@@ -278,6 +310,14 @@ public class MyCar {
 
     private float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private DriveCommand clampCommand(DriveCommand command) {
+        return new DriveCommand(
+                clamp(command.steering, -1.0f, 1.0f),
+                clamp(command.throttle, -1.0f, 1.0f),
+                clamp(command.brake, 0.0f, 1.0f)
+        );
     }
 
     // ===========================================================
