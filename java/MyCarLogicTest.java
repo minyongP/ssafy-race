@@ -5,8 +5,10 @@ public class MyCarLogicTest {
         turnsTowardForwardCurve();
         recentersWhenCarIsOffMiddle();
         slowsBeforeSharpFastCurve();
+        keepsStrongThrottleBelowSixty();
         avoidsObstacleOnRightBySteeringLeft();
         avoidsObstacleOnLeftBySteeringRight();
+        avoidsRightObstacleFromRightSideBySteeringLeft();
         recoversWhenStoppedAfterStart();
         clampsSteeringRange();
         System.out.println("MyCarLogicTest passed");
@@ -36,6 +38,13 @@ public class MyCarLogicTest {
         assertTrue(command.brake >= 0.6f, "sharp fast curve should apply brake");
     }
 
+    static void keepsStrongThrottleBelowSixty() {
+        MyCar car = new MyCar();
+        MyCar.DriveCommand command = car.decideControls(state(55, 0, 0, 20, 20, 20, 20));
+
+        assertClose(0.9f, command.throttle, 0.0001f, "speed below 60 should keep Python baseline throttle");
+    }
+
     static void avoidsObstacleOnRightBySteeringLeft() {
         MyCar car = new MyCar();
         DrivingInterface.CarStateValues values = state(80, 0, 0, 0, 0, 0, 0);
@@ -54,6 +63,16 @@ public class MyCarLogicTest {
         MyCar.DriveCommand command = car.decideControls(values);
 
         assertTrue(command.steering > 0.10f, "left-side obstacle should steer right");
+    }
+
+    static void avoidsRightObstacleFromRightSideBySteeringLeft() {
+        MyCar car = new MyCar();
+        DrivingInterface.CarStateValues values = state(80, 1.0f, 0, 0, 0, 0, 0);
+        addObstacle(values, 18.0f, 1.5f);
+
+        MyCar.DriveCommand command = car.decideControls(values);
+
+        assertTrue(command.steering < -0.10f, "right-side obstacle while right of center should steer left");
     }
 
     static void recoversWhenStoppedAfterStart() {
