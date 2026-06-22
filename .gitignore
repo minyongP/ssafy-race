@@ -9,6 +9,12 @@ Desktop.ini
 
 # Logs
 *.log
+race_logs/
+python/log_gpt_v*.csv
+
+# Local reference dumps / scraped candidates
+external_sources/
+external_candidates/
 
 # Environment
 .env
@@ -18,6 +24,10 @@ Desktop.ini
 *.class
 Build/
 out/
+
+# Python build/test outputs
+__pycache__/
+*.pyc
 
 # SSAFY simulator/runtime binaries
 *.dll
